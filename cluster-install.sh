@@ -264,10 +264,6 @@ install_rancher(){
 }
 
 install_rancher_monitoring() {
-    if is_deployed cattle-monitoring-system deployment rancher-monitoring-grafana; then
-        log_warn "Rancher Monitoring already installed, skipping"
-        return 0
-    fi
 
     log_info "Installing Rancher Monitoring..."
 
@@ -277,21 +273,19 @@ install_rancher_monitoring() {
         return 1
     }
 
-    helm install rancher-monitoring-crd rancher-charts/rancher-monitoring-crd \
+    helm upgrade --install rancher-monitoring-crd rancher-charts/rancher-monitoring-crd \
         --namespace cattle-monitoring-system \
         --create-namespace || {
             log_error "Failed to install Rancher Monitoring CRDs"
         return 1
         }
 
-    helm install rancher-monitoring rancher-charts/rancher-monitoring \
+    helm upgrade --install rancher-monitoring rancher-charts/rancher-monitoring \
         --namespace cattle-monitoring-system \
         --create-namespace \
         --set prometheus.prometheusSpec.retention=7d \
         --set prometheus.prometheusSpec.resources.requests.cpu=500m \
         --set prometheus.prometheusSpec.resources.requests.memory=1Gi \
-        --set grafana.grafana\\.ini.server.root_url="https://${RANCHER_HOSTNAME}/api/v1/namespaces/cattle-monitoring-system/services/http:rancher-monitoring-grafana:80/proxy/" \
-        --set grafana.grafana\\.ini.server.serve_from_sub_path=true \
         --wait || {
         log_error "Failed to install Rancher Monitoring"
         return 1
@@ -306,7 +300,7 @@ install_rancher_monitoring() {
         return 0
     }
 
-    log_info "  Grafana: http://$RANCHER_HOSTNAME/api/v1/namespaces/cattle-monitoring-system/services/http:rancher-monitoring-grafana:80/proxy/"
+    log_info "  Grafana: https://$RANCHER_HOSTNAME/api/v1/namespaces/cattle-monitoring-system/services/http:rancher-monitoring-grafana:80/proxy/"
     log_info "  Username: admin"
     log_info "  Password: $grafana_password"
 }
@@ -426,7 +420,7 @@ install_keycloak() {
 
     kubectl wait --namespace keycloak \
         --for=condition=ready pod \
-        --selector=app=keycloak-operator \
+        --selector=app.kubernetes.io/name=keycloak-operator \
         --timeout=180s || {
         log_error "Keycloak operator failed to become ready"
         return 1
