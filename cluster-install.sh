@@ -277,6 +277,13 @@ install_rancher_monitoring() {
         return 1
     }
 
+    helm install rancher-monitoring-crd rancher-charts/rancher-monitoring-crd \
+        --namespace cattle-monitoring-system \
+        --create-namespace || {
+            log_error "Failed to install Rancher Monitoring CRDs"
+        return 1
+        }
+
     helm install rancher-monitoring rancher-charts/rancher-monitoring \
         --namespace cattle-monitoring-system \
         --create-namespace \
