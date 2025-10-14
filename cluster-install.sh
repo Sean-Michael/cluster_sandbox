@@ -176,7 +176,58 @@ install_certmanager(){
         return 1
     }
 
+    wait_for_rollout cert-manager cert-manager || return 1
+
     log_info "cert-manager installed"
+}
+
+setup_ca_issuer(){
+    if kubectl get secret -n cert-manager ca-key-pair &>/dev/null; then
+        log_warn "CA certificate already exists, skipping CA generation"
+    else
+        log_info "Generating self-signed CA certificate..."
+
+        openssl genrsa -out /tmp/ca.key 4096 || {
+            log_error "Failed to generate CA private key"
+            return 1
+        }
+
+        openssl req -x509 -new -nodes -key /tmp/ca.key -sha256 -days 3650 \
+            -out /tmp/ca.crt \
+            -subj "/C=US/ST=State/L=City/O=${CLUSTER_NAME}/CN=${CLUSTER_NAME} Root CA" || {
+            log_error "Failed to generate CA certificate"
+            return 1
+        }
+
+        kubectl create secret tls ca-key-pair \
+            --cert=/tmp/ca.crt \
+            --key=/tmp/ca.key \
+            --namespace=cert-manager || {
+            log_error "Failed to create CA secret"
+            return 1
+        }
+
+        mkdir -p ./certs
+        cp /tmp/ca.crt ./certs/ca.crt
+
+        rm -f /tmp/ca.key /tmp/ca.crt
+
+        log_info "CA certificate saved to ./certs/ca.crt"
+        log_info "Distribute this to your team to trust the certificates"
+    fi
+
+    log_info "Creating ClusterIssuer..."
+    if [[ -f manifests/cert-manager/cluster-issuer.yaml ]]; then
+        kubectl apply -f manifests/cert-manager/cluster-issuer.yaml || {
+            log_error "Failed to create ClusterIssuer"
+            return 1
+        }
+    else
+        log_error "ClusterIssuer manifest not found at manifests/cert-manager/cluster-issuer.yaml"
+        return 1
+    fi
+
+    log_info "ClusterIssuer 'ca-issuer' created successfully"
 }
 
 install_rancher(){
@@ -198,14 +249,16 @@ install_rancher(){
         --set hostname="${RANCHER_HOSTNAME}" \
         --set bootstrapPassword="${RANCHER_PASSWORD}" \
         --set replicas=1 \
-        --set ingress.ingressClassName=nginx || {
+        --set ingress.ingressClassName=nginx \
+        --set ingress.tls.source=secret \
+        --set ingress.extraAnnotations."cert-manager\.io/cluster-issuer"=ca-issuer || {
         log_error "Failed to install Rancher"
         return 1
     }
 
     wait_for_rollout cattle-system rancher || return 1
 
-    log_info "Rancher installed at http://${RANCHER_HOSTNAME}"
+    log_info "Rancher installed at https://${RANCHER_HOSTNAME}"
     log_info "  Username: admin"
     log_info "  Password: ${RANCHER_PASSWORD}"
 }
@@ -435,6 +488,7 @@ main() {
 
     if [[ "$INSTALL_CERTMANAGER" == "true" ]]; then
         install_certmanager || failed=1
+        setup_ca_issuer || failed=1
     fi
 
     if [[ "$INSTALL_RANCHER" == "true" ]]; then
