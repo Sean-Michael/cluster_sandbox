@@ -337,26 +337,85 @@ install_argocd(){
 }
 
 install_keycloak() {
-    log_info "Installing Keycloak SSO..."
-
-    if is_deployed keycloak deploymentkeycloak-operator; then
-        log_warn "Keycloak already installed, skipping."
+    if is_deployed keycloak deployment keycloak-operator; then
+        log_warn "Keycloak already installed, skipping"
+        return 0
     fi
 
-    log_info "Installing CRDS..."
-    kubectl apply -f https://raw.githubusercontent.com/keycloak/keycloak-k8s-resources/26.4.0/kubernetes/keycloaks.k8s.keycloak.org-v1.yml || {
-        log_error "Failed to apply Keycloak CRDs"
-    }
-    kubectl apply -f kubectl apply -f https://raw.githubusercontent.com/keycloak/keycloak-k8s-resources/26.4.0/kubernetes/keycloakrealmimports.k8s.keycloak.org-v1.yml || {
-        log_error "Failed to apply Keycloak CRDs"
-    }
+    log_info "Installing Keycloak SSO..."
 
-    log_info "Installing Keycloak Operator.."
     kubectl create namespace keycloak 2>/dev/null || true
-    kubectl -n keycloak apply -f https://raw.githubusercontent.com/keycloak/keycloak-k8s-resources/26.4.0/kubernetes/kubernetes.yml || {
-        log_error "Failed to apply Keycloak Operator manifest"
+
+    log_info "Installing Keycloak CRDs..."
+    kubectl apply -f https://raw.githubusercontent.com/keycloak/keycloak-k8s-resources/26.0.0/kubernetes/keycloaks.k8s.keycloak.org-v1.yml || {
+        log_error "Failed to apply Keycloak CRDs"
+        return 1
+    }
+    kubectl apply -f https://raw.githubusercontent.com/keycloak/keycloak-k8s-resources/26.0.0/kubernetes/keycloakrealmimports.k8s.keycloak.org-v1.yml || {
+        log_error "Failed to apply Keycloak RealmImport CRDs"
+        return 1
     }
 
+    log_info "Installing Keycloak Operator..."
+    kubectl -n keycloak apply -f https://raw.githubusercontent.com/keycloak/keycloak-k8s-resources/26.0.0/kubernetes/kubernetes.yml || {
+        log_error "Failed to apply Keycloak Operator manifest"
+        return 1
+    }
+
+    kubectl wait --namespace keycloak \
+        --for=condition=ready pod \
+        --selector=app=keycloak-operator \
+        --timeout=180s || {
+        log_error "Keycloak operator failed to become ready"
+        return 1
+    }
+
+    log_info "Deploying Keycloak instance..."
+    if [[ -f manifests/keycloak/keycloak.yaml ]]; then
+        kubectl apply -f manifests/keycloak/keycloak.yaml || {
+            log_error "Failed to apply Keycloak instance"
+            return 1
+        }
+    else
+        log_error "Keycloak instance manifest not found at manifests/keycloak/keycloak.yaml"
+        return 1
+    fi
+
+    log_info "Waiting for Keycloak to be ready..."
+    kubectl wait --namespace keycloak \
+        --for=condition=ready pod \
+        --selector=app=keycloak \
+        --timeout=300s || {
+        log_error "Keycloak instance failed to become ready"
+        return 1
+    }
+
+    if [[ -f manifests/keycloak/ingress.yaml ]]; then
+        kubectl apply -f manifests/keycloak/ingress.yaml || {
+            log_warn "Failed to apply Keycloak ingress"
+        }
+    else
+        log_warn "Keycloak ingress manifest not found at manifests/keycloak/ingress.yaml"
+    fi
+
+    sleep 10
+
+    if [[ -f manifests/keycloak/realm-import.yaml ]]; then
+        log_info "Importing Keycloak realm configuration..."
+        kubectl apply -f manifests/keycloak/realm-import.yaml || {
+            log_warn "Failed to apply realm config - you may need to configure it manually"
+        }
+    else
+        log_warn "Keycloak realm import not found at manifests/keycloak/realm-import.yaml"
+    fi
+
+    local keycloak_password
+    keycloak_password=$(kubectl get secret -n keycloak keycloak-initial-admin \
+        -o jsonpath="{.data.password}" 2>/dev/null | base64 -d) || keycloak_password="admin"
+
+    log_info "Keycloak installed at https://${KEYCLOAK_HOSTNAME}"
+    log_info "  Username: admin"
+    log_info "  Password: ${keycloak_password}"
 }
 
 main() {
