@@ -6,7 +6,7 @@ This is just a place for some config (mostly shell scripts) that stands up a sim
 
 I've been testing with `kind` just for the speed but these configs would feasibly work with minimal modification for any cluster.
 
-To create a kind cluster for our purposes, consider the following. 
+### Setup KIND
 
 Install KIND if you don't have it already, for macOS:
 
@@ -14,7 +14,7 @@ Install KIND if you don't have it already, for macOS:
 brew install kind
 ```
 
-Now create a cluster with ingress support.
+Create a cluster with ingress support:
 
 ```shell
 cat <<EOF | kind create cluster --name rancher-management --config=-
@@ -40,6 +40,60 @@ EOF
 
 > Alternatively you may use the above manifest from file `manifests/kind/cluster.yaml`
 
-You are now ready to initialize the cluster and install our applications. 
+### Install Management Components
 
-Simply run `cluster_install.sh` with this cluster as your current `KUBECONFIG` context.
+The `cluster-install.sh` script sets up the management cluster. By default it installs the core components (NGINX, cert-manager, and Rancher). You can optionally add monitoring, logging, or GitOps tools.
+
+Basic install:
+
+```shell
+./cluster-install.sh
+```
+
+Install everything:
+
+```shell
+./cluster-install.sh --all
+```
+
+Install with monitoring:
+
+```shell
+./cluster-install.sh --with-monitoring
+```
+
+The script is idempotent so you can run it multiple times without issues. It'll skip anything already installed.
+
+Access Rancher at <http://rancher.localhost> with username `admin` and password `admin` (or whatever you set via `RANCHER_PASSWORD`).
+
+### Import Clusters
+
+Use `import-cluster.sh` to bring external clusters into Rancher management.
+
+From kubeconfig context:
+
+```shell
+./import-cluster.sh kubeconfig docker-desktop
+```
+
+From GKE:
+
+```shell
+./import-cluster.sh gke my-project my-cluster us-central1
+```
+
+From AKS:
+
+```shell
+./import-cluster.sh aks my-resource-group prod-cluster
+```
+
+Enable monitoring on imported cluster:
+
+```shell
+./import-cluster.sh enable-monitoring c-m-12345678
+```
+
+The cluster ID comes from Rancher UI after import.
+
+After installation you should be able to access the web interfaces for Rancher and optionally ArgoCD from their localhost names. You will have to accept the self-signed certificate warning.
