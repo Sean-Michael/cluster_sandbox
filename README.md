@@ -17,28 +17,8 @@ brew install kind
 Create a cluster with ingress support:
 
 ```shell
-cat <<EOF | kind create cluster --name rancher-management --config=-
-kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-nodes:
-- role: control-plane
-kubeadmConfigPatches:
-- |
-    kind: InitConfiguration
-    nodeRegistration:
-    kubeletExtraArgs:
-        node-labels: "ingress-ready=true"
-extraPortMappings:
-- containerPort: 80
-    hostPort: 80
-    protocol: TCP
-- containerPort: 443
-    hostPort: 443
-    protocol: TCP
-EOF
+kind create cluster --name sandbox-mgmt --config manifests/kind/clustery.yaml
 ```
-
-> Alternatively you may use the above manifest from file `manifests/kind/cluster.yaml`
 
 ### Install Management Components
 
@@ -96,4 +76,62 @@ Enable monitoring on imported cluster:
 
 The cluster ID comes from Rancher UI after import.
 
-After installation you should be able to access the web interfaces for Rancher and optionally ArgoCD from their localhost names. You will have to accept the self-signed certificate warning.
+## SSO with Keycloak
+
+You can enable Keycloak SSO to provide centralized authentication with proper RBAC for Rancher and ArgoCD:
+
+```shell
+./cluster-install.sh --with-keycloak --with-argocd
+```
+
+This sets up:
+
+- **Keycloak** identity provider with OIDC
+- **Self-signed CA** for TLS certificates
+- **Pre-configured realm** with admin and viewer groups
+- **OIDC clients** for Rancher and ArgoCD
+
+See [KEYCLOAK_SSO_SETUP.md](KEYCLOAK_SSO_SETUP.md) for complete setup instructions, including:
+
+- How to configure Rancher and ArgoCD OIDC authentication
+- Distributing the CA certificate
+- Managing users and permissions
+- Preventing teammates from breaking your stuff (viewers group)
+
+## Installing the CA Certificate
+
+Services use HTTPS with a private CA. Install `./certs/ca.crt` to avoid browser warnings:
+
+**macOS:**
+
+```bash
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ./certs/ca.crt
+```
+
+**Linux (Ubuntu/Debian):**
+
+```bash
+sudo cp ./certs/ca.crt /usr/local/share/ca-certificates/cluster-ca.crt
+sudo update-ca-certificates
+```
+
+**Linux (RHEL/Fedora):**
+
+```bash
+sudo cp ./certs/ca.crt /etc/pki/ca-trust/source/anchors/
+sudo update-ca-trust
+```
+
+**Windows (PowerShell as admin):**
+
+```powershell
+Import-Certificate -FilePath ".\certs\ca.crt" -CertStoreLocation Cert:\LocalMachine\Root
+```
+
+## Accessing Services
+
+After installation you can access:
+
+- **Rancher**: <https://rancher.localhost>
+- **ArgoCD**: <https://argocd.localhost> (if installed)
+- **Keycloak**: <https://keycloak.localhost> (if installed)
