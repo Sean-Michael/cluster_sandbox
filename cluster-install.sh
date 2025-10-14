@@ -5,6 +5,7 @@ set -euo pipefail
 RANCHER_HOSTNAME="${RANCHER_HOSTNAME:-rancher.localhost}"
 RANCHER_PASSWORD="${RANCHER_PASSWORD:-admin}"
 ARGOCD_HOSTNAME="${ARGOCD_HOSTNAME:-argocd.localhost}"
+KEYCLOAK_HOSTNAME="${KEYCLOAK_HOSTNAME:-keycloak.localhost}"
 CLUSTER_NAME="${CLUSTER_NAME:-rancher-management}"
 
 RED='\033[0;31m'
@@ -18,6 +19,7 @@ INSTALL_RANCHER=true
 INSTALL_MONITORING=false
 INSTALL_LOKI=false
 INSTALL_ARGOCD=false
+INSTALL_KEYCLOAK=false
 
 log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
@@ -37,12 +39,14 @@ OPTIONS:
     --with-monitoring       Install Rancher monitoring stack
     --with-loki             Install Loki logging stack
     --with-argocd           Install ArgoCD
+    --with-keycloak         Install Keycloak SSO
     --all                   Install all available components
 
 ENVIRONMENT VARIABLES:
     RANCHER_HOSTNAME        Rancher hostname (default: rancher.localhost)
     RANCHER_PASSWORD        Rancher admin password (default: admin)
     ARGOCD_HOSTNAME         ArgoCD hostname (default: argocd.localhost)
+    KEYCLOAK_HOSTNAME       Keycloak hostname (default: keycloak.localhost)
     CLUSTER_NAME            Cluster name (default: rancher-management)
 
 EXAMPLES:
@@ -85,10 +89,15 @@ parse_args() {
                 INSTALL_ARGOCD=true
                 shift
                 ;;
+            --with-keycloak)
+                INSTALL_KEYCLOAK=true
+                shift
+                ;;
             --all)
                 INSTALL_MONITORING=true
                 INSTALL_LOKI=true
                 INSTALL_ARGOCD=true
+                INSTALL_KEYCLOAK=true
                 shift
                 ;;
             *)
@@ -327,6 +336,29 @@ install_argocd(){
     log_info "  Password: $argo_passwd"
 }
 
+install_keycloak() {
+    log_info "Installing Keycloak SSO..."
+
+    if is_deployed keycloak deploymentkeycloak-operator; then
+        log_warn "Keycloak already installed, skipping."
+    fi
+
+    log_info "Installing CRDS..."
+    kubectl apply -f https://raw.githubusercontent.com/keycloak/keycloak-k8s-resources/26.4.0/kubernetes/keycloaks.k8s.keycloak.org-v1.yml || {
+        log_error "Failed to apply Keycloak CRDs"
+    }
+    kubectl apply -f kubectl apply -f https://raw.githubusercontent.com/keycloak/keycloak-k8s-resources/26.4.0/kubernetes/keycloakrealmimports.k8s.keycloak.org-v1.yml || {
+        log_error "Failed to apply Keycloak CRDs"
+    }
+
+    log_info "Installing Keycloak Operator.."
+    kubectl create namespace keycloak 2>/dev/null || true
+    kubectl -n keycloak apply -f https://raw.githubusercontent.com/keycloak/keycloak-k8s-resources/26.4.0/kubernetes/kubernetes.yml || {
+        log_error "Failed to apply Keycloak Operator manifest"
+    }
+
+}
+
 main() {
     parse_args "$@"
 
@@ -360,6 +392,10 @@ main() {
 
     if [[ "$INSTALL_ARGOCD" == "true" ]]; then
         install_argocd || failed=1
+    fi
+
+    if [[ "$INSTALL_KEYCLOAK" == "true" ]]; then
+        install_keycloak || failed=1
     fi
 
     echo ""
