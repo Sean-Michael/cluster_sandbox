@@ -290,6 +290,8 @@ install_rancher_monitoring() {
         --set prometheus.prometheusSpec.retention=7d \
         --set prometheus.prometheusSpec.resources.requests.cpu=500m \
         --set prometheus.prometheusSpec.resources.requests.memory=1Gi \
+        --set grafana.grafana\\.ini.server.root_url="https://${RANCHER_HOSTNAME}/api/v1/namespaces/cattle-monitoring-system/services/http:rancher-monitoring-grafana:80/proxy/" \
+        --set grafana.grafana\\.ini.server.serve_from_sub_path=true \
         --wait || {
         log_error "Failed to install Rancher Monitoring"
         return 1
