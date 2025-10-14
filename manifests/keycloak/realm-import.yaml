@@ -1,0 +1,129 @@
+---
+apiVersion: k8s.keycloak.org/v2alpha1
+kind: KeycloakRealmImport
+metadata:
+  name: cluster-realm
+  namespace: keycloak
+spec:
+  keycloakCRName: keycloak
+  realm:
+    realm: cluster
+    enabled: true
+    displayName: "Cluster Management"
+
+    groups:
+      - name: admins
+        path: /admins
+        attributes:
+          description: ["Full administrative access to all services"]
+      - name: viewers
+        path: /viewers
+        attributes:
+          description: ["Read-only access to all services"]
+
+    clients:
+      - clientId: rancher
+        name: Rancher Management
+        enabled: true
+        protocol: openid-connect
+        publicClient: false
+        redirectUris:
+          - "https://rancher.localhost/verify-auth"
+          - "https://rancher.localhost/*"
+        webOrigins:
+          - "https://rancher.localhost"
+        standardFlowEnabled: true
+        implicitFlowEnabled: false
+        directAccessGrantsEnabled: true
+        serviceAccountsEnabled: false
+        attributes:
+          "access.token.lifespan": "3600"
+          "client.secret.creation.time": "0"
+        protocolMappers:
+          - name: groups
+            protocol: openid-connect
+            protocolMapper: oidc-group-membership-mapper
+            config:
+              "claim.name": "groups"
+              "full.path": "false"
+              "id.token.claim": "true"
+              "access.token.claim": "true"
+              "userinfo.token.claim": "true"
+          - name: email
+            protocol: openid-connect
+            protocolMapper: oidc-usermodel-property-mapper
+            config:
+              "user.attribute": "email"
+              "claim.name": "email"
+              "id.token.claim": "true"
+              "access.token.claim": "true"
+              "userinfo.token.claim": "true"
+          - name: username
+            protocol: openid-connect
+            protocolMapper: oidc-usermodel-property-mapper
+            config:
+              "user.attribute": "username"
+              "claim.name": "preferred_username"
+              "id.token.claim": "true"
+              "access.token.claim": "true"
+              "userinfo.token.claim": "true"
+
+      - clientId: argocd
+        name: ArgoCD
+        enabled: true
+        protocol: openid-connect
+        publicClient: false
+        redirectUris:
+          - "https://argocd.localhost/auth/callback"
+          - "https://argocd.localhost/*"
+        webOrigins:
+          - "https://argocd.localhost"
+        standardFlowEnabled: true
+        implicitFlowEnabled: false
+        directAccessGrantsEnabled: false
+        serviceAccountsEnabled: false
+        attributes:
+          "access.token.lifespan": "3600"
+        protocolMappers:
+          - name: groups
+            protocol: openid-connect
+            protocolMapper: oidc-group-membership-mapper
+            config:
+              "claim.name": "groups"
+              "full.path": "false"
+              "id.token.claim": "true"
+              "access.token.claim": "true"
+              "userinfo.token.claim": "true"
+          - name: email
+            protocol: openid-connect
+            protocolMapper: oidc-usermodel-property-mapper
+            config:
+              "user.attribute": "email"
+              "claim.name": "email"
+              "id.token.claim": "true"
+              "access.token.claim": "true"
+              "userinfo.token.claim": "true"
+
+    users:
+      - username: admin
+        enabled: true
+        email: admin@example.com
+        firstName: Admin
+        lastName: User
+        credentials:
+          - type: password
+            value: hunter22
+            temporary: false
+        groups:
+          - /admins
+      - username: viewer
+        enabled: true
+        email: viewer@example.com
+        firstName: Viewer
+        lastName: User
+        credentials:
+          - type: password
+            value: hunter22
+            temporary: false
+        groups:
+          - /viewers

@@ -1,0 +1,34 @@
+---
+# ArgoCD ConfigMap patch for OIDC authentication
+# Apply after Keycloak is configured and get the client secret from Keycloak
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  url: https://argocd.localhost
+  oidc.config: |
+    name: Keycloak
+    issuer: https://keycloak.localhost/realms/cluster
+    clientID: argocd
+    clientSecret: $oidc.keycloak.clientSecret
+    requestedScopes: ["openid", "profile", "email", "groups"]
+
+---
+# ArgoCD RBAC ConfigMap - map Keycloak groups to ArgoCD roles
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+data:
+  policy.default: role:readonly
+  policy.csv: |
+    # Admins have full access
+    g, admins, role:admin
+
+    # Viewers have read-only access (default)
+    g, viewers, role:readonly
+
+  scopes: '[groups, email]'
