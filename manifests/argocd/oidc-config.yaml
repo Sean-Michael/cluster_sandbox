@@ -1,6 +1,4 @@
 ---
-# ArgoCD ConfigMap patch for OIDC authentication
-# Apply after Keycloak is configured and get the client secret from Keycloak
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -16,7 +14,6 @@ data:
     requestedScopes: ["openid", "profile", "email", "groups"]
 
 ---
-# ArgoCD RBAC ConfigMap - map Keycloak groups to ArgoCD roles
 apiVersion: v1
 kind: ConfigMap
 metadata:
